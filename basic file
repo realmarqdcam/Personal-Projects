@@ -1,0 +1,682 @@
+import React, { useState, useReducer, useEffect } from 'react';
+import { ArrowLeft, Moon, Sun, Hash, RotateCcw, X, Check, Github,}
+  from 'lucide-react';
+import Button from './Button.jsx';
+
+// Create a Theme context
+const ThemeContext = React.createContext();
+
+/*
+This section contains the reducer, it's a function that takes the current state and an action, and returns a new state.
+- Handles different actions that dispatches to the reducer, then is updated in the state.
+*/
+const calculatorReducer = (state, action) => {
+  switch (action.type) {
+    case 'SET_INPUT':
+      return { ...state, currentInput: action.payload };
+    case 'SET_OPERATION':
+      return {
+        ...state,
+        operation: action.payload,
+        previousInput: state.currentInput,
+        currentInput: ''
+      };
+    case 'CALCULATE':
+      return {
+        ...state,
+        currentInput: action.payload,
+        previousInput: '',
+        operation: null,
+        history: [
+          ...state.history,
+          {
+            expression: `${state.previousInput} ${state.operation} ${state.currentInput}`,
+            result: action.payload
+          }
+        ]
+      };
+    case 'CLEAR':
+      return { ...state, currentInput: '', previousInput: '', operation: null };
+    case 'CLEAR_ALL':
+      return { ...state, currentInput: '', previousInput: '', operation: null, history: [] };
+    case 'TOGGLE_SIGN':
+      return {
+        ...state,
+        currentInput: state.currentInput.startsWith('-')
+            ? state.currentInput.substring(1)
+            : `-${state.currentInput}`
+      };
+    case 'ADD_DECIMAL':
+      return {
+        ...state,
+        currentInput: state.currentInput.includes('.')
+            ? state.currentInput
+            : `${state.currentInput}.`
+      };
+    case 'CALCULATE_PERCENTAGE':
+      return { ...state, currentInput: String(parseFloat(state.currentInput) / 100) };
+    case 'USE_HISTORY_ITEM':
+      return { ...state, currentInput: action.payload };
+    default:
+      return state;
+  }
+};
+
+/*
+CalculatorApp Component
+Serves to render UI, handle the different states, and manage calculator logic.
+*/
+const CalculatorApp = () => {
+  const [darkMode, setDarkMode] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mode, setMode] = useState('standard');
+  const modes = [
+    { id: 'standard', name: 'Standard' },
+    { id: 'scientific', name: 'Scientific' },
+    { id: 'programmer', name: 'Programmer' },
+  ];
+  // Tip box visibility & animation
+  const [showTip, setShowTip] = useState(false);
+  const [animateTip, setAnimateTip] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowTip(true);
+      setAnimateTip(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleCloseTip = () => {
+    setAnimateTip(false);
+    setTimeout(() => setShowTip(false), 300);
+  };
+
+  const [precision, setPrecision] = useState(4);
+
+  const initialState = {
+    currentInput: '',
+    previousInput: '',
+    operation: null,
+    history: [],
+  };
+  const [state, dispatch] = useReducer(calculatorReducer, initialState);
+
+  // Keyboard support
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleNumberInput(e.key);
+      } else if (e.key === '.') {
+        dispatch({ type: 'ADD_DECIMAL' });
+      } else if (e.key === '+') {
+        handleOperation('+');
+      } else if (e.key === '-') {
+        handleOperation('-');
+      } else if (e.key === '*') {
+        handleOperation('×');
+      } else if (e.key === '/') {
+        handleOperation('÷');
+      } else if (e.key === 'Enter' || e.key === '=') {
+        handleCalculate();
+      } else if (e.key === 'Escape') {
+        dispatch({ type: 'CLEAR' });
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state]);
+
+
+  /*
+  The various handlers for the calulator operations.
+  - handleNumberInput: Handles number input and concatenates to current input.
+  - handleOperation: Sets the operation and handles calculation if needed.
+  - handleCalculate: Performs the calculation based on the current operation.
+  - handleBackspace: Removes the last character from the current input.
+  - handleSpecialOperation: Handles special operations like square, square root, etc.
+  */
+  const handleNumberInput = (num) => {
+    if (state.currentInput === '0') {
+      dispatch({ type: 'SET_INPUT', payload: num });
+    } else {
+      dispatch({ type: 'SET_INPUT', payload: `${state.currentInput}${num}` });
+    }
+  };
+
+  const handleOperation = (op) => {
+    if (state.currentInput === '') return;
+    if (state.previousInput !== '' && state.operation && state.currentInput !== '') {
+      handleCalculate();
+    }
+    dispatch({ type: 'SET_OPERATION', payload: op });
+  };
+
+  const handleCalculate = () => {
+    if (state.previousInput === '' || state.operation === null || state.currentInput === '') return;
+
+    const prev = parseFloat(state.previousInput);
+    const current = parseFloat(state.currentInput);
+    let result = 0;
+
+    switch (state.operation) {
+      case '+':
+        result = prev + current;
+        break;
+      case '-':
+        result = prev - current;
+        break;
+      case '×':
+        result = prev * current;
+        break;
+      case '÷':
+        result = prev / current;
+        break;
+      case '^':
+        result = Math.pow(prev, current);
+        break;
+      case 'log':
+        result = Math.log(current) / Math.log(prev);
+        break;
+      default:
+        return;
+    }
+
+    result = Number(result.toFixed(precision));
+    dispatch({ type: 'CALCULATE', payload: String(result) });
+  };
+
+  const handleBackspace = () => {
+    if (state.currentInput.length > 0) {
+      dispatch({
+        type: 'SET_INPUT',
+        payload: state.currentInput.slice(0, -1)
+      });
+    }
+  };
+
+
+  // Additional logic for memory, special ops
+  const getMemoryValue = () => {
+    if (mode === 'scientific') {
+      return 'M:0';
+    } else if (mode === 'programmer') {
+      return '0x0';
+    }
+    return '';
+  };
+
+  const handleSpecialOperation = (op) => {
+    switch (op) {
+      case 'square':
+        dispatch({ type: 'SET_INPUT', payload: String(Math.pow(parseFloat(state.currentInput || '0'), 2)) });
+        break;
+      case 'sqrt':
+        dispatch({ type: 'SET_INPUT', payload: String(Math.sqrt(parseFloat(state.currentInput || '0'))) });
+        break;
+      case 'sin':
+        dispatch({ type: 'SET_INPUT', payload: String(Math.sin(parseFloat(state.currentInput || '0') * Math.PI / 180).toFixed(precision)) });
+        break;
+      case 'cos':
+        dispatch({ type: 'SET_INPUT', payload: String(Math.cos(parseFloat(state.currentInput || '0') * Math.PI / 180).toFixed(precision)) });
+        break;
+      case 'tan':
+        dispatch({ type: 'SET_INPUT', payload: String(Math.tan(parseFloat(state.currentInput || '0') * Math.PI / 180).toFixed(precision)) });
+        break;
+      default:
+        break;
+    }
+  };
+
+
+  /*
+  Renders special icons for the different calculator modes.
+  */
+  const renderSpecialButtons = () => {
+    if (mode === 'scientific') {
+      return (
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleSpecialOperation('square')}>x²</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleSpecialOperation('sqrt')}>√x</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleOperation('^')}>x^y</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleOperation('log')}>log</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleSpecialOperation('sin')}>sin</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleSpecialOperation('cos')}>cos</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => handleSpecialOperation('tan')}>tan</Button>
+            <Button className="bg-calc-gray text-text-dark" onClick={() => dispatch({ type: 'CALCULATE_PERCENTAGE' })}>%</Button>
+          </div>
+      );
+    }
+    if (mode === 'programmer') {
+      return (
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            <Button className="bg-calc-gray text-text-dark">AND</Button>
+            <Button className="bg-calc-gray text-text-dark">OR</Button>
+            <Button className="bg-calc-gray text-text-dark">XOR</Button>
+            <Button className="bg-calc-gray text-text-dark">NOT</Button>
+            <Button className="bg-calc-gray text-text-dark">LSHIFT</Button>
+            <Button className="bg-calc-gray text-text-dark">RSHIFT</Button>
+            <Button className="bg-calc-gray text-text-dark">MOD</Button>
+            <Button className="bg-calc-gray text-text-dark">INT</Button>
+          </div>
+      );
+    }
+    return null;
+  };
+
+  /*Settings panel
+  This sections allows the user to switch calculator modes, theme, clear history, and/or adjust decimal precision.
+  */
+  const SettingsPanel = ({ isOpen, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="absolute top-0 left-0 w-full h-full z-20 bg-white p-4 overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">Settings</h2>
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+              <X className="text-gray-800" size={24} />
+            </button>
+          </div>
+
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-800">Theme</h3>
+            <div className="flex gap-4">
+              <button
+                  onClick={() => setDarkMode(false)}
+                  className="p-4 rounded-lg flex flex-col items-center gap-2 bg-gray-100 border-2 border-blue-500"
+              >
+                <Sun className="text-gray-800" size={24} />
+                <span className="text-gray-800">Light</span>
+                <Check className="text-blue-500" size={16} />
+              </button>
+              <button
+                  onClick={() => setDarkMode(true)}
+                  className="p-4 rounded-lg flex flex-col items-center gap-2 bg-gray-100 border border-gray-200"
+              >
+                <Moon className="text-gray-800" size={24} />
+                <span className="text-gray-800">Dark</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-800">Calculator Mode</h3>
+            <div className="flex flex-col gap-2">
+              {modes.map(m => (
+                  <button
+                      key={m.id}
+                      onClick={() => setMode(m.id)}
+                      className={`p-3 rounded-lg flex justify-between items-center ${
+                          mode === m.id
+                              ? 'bg-blue-100 border-2 border-blue-500'
+                              : 'bg-gray-100 border border-gray-200'
+                      }`}
+                  >
+                    <span className="text-gray-800">{m.name}</span>
+                    {mode === m.id && <Check className="text-blue-500" size={16} />}
+                  </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-800">Decimal Precision</h3>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-800">Decimal Places: {precision}</span>
+              <div className="flex gap-2">
+                <button
+                    onClick={() => setPrecision(Math.max(0, precision - 1))}
+                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+                    disabled={precision <= 0}
+                >
+                  -
+                </button>
+                <button
+                    onClick={() => setPrecision(Math.min(10, precision + 1))}
+                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+                    disabled={precision >= 10}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <button
+                onClick={() => dispatch({ type: 'CLEAR_ALL' })}
+                className="w-full p-3 rounded-lg bg-red-100 text-red-800 hover:bg-red-200"
+            >
+              Clear All History
+            </button>
+          </div>
+
+        </div>
+    );
+  };
+
+  /*
+  - This panel displays the user's previous calculations, as well as allow them to reuse those calculations.
+  */
+  const HistoryPanel = ({ isOpen, onClose, history }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="absolute top-0 left-0 w-full h-full z-10 bg-white p-4 overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">History</h2>
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+              <X className="text-gray-800" size={24} />
+            </button>
+          </div>
+
+          {history.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Hash size={48} className="mx-auto mb-4 opacity-50" />
+                <p>No calculation history yet</p>
+              </div>
+          ) : (
+              <div className="space-y-4">
+                {history.map((item, index) => (
+                    <div
+                        key={index}
+                        className="p-4 rounded-lg cursor-pointer transition-colors bg-gray-100 hover:bg-gray-200"
+                        onClick={() => {
+                          dispatch({ type: 'USE_HISTORY_ITEM', payload: item.result });
+                          onClose();
+                        }}
+                    >
+                      <p className="text-sm text-gray-600">{item.expression}</p>
+                      <p className="text-lg font-bold text-gray-800">= {item.result}</p>
+                    </div>
+                ))}
+              </div>
+          )}
+        </div>
+    );
+  };
+
+  return (
+      /*
+      This block wraps the entire application in a ThemeContext provider
+      - Dark Mode functionality through a toggle button.
+      - Allows child compenets to access the theme state.
+      -
+      */
+      <ThemeContext.Provider value={{ darkMode, setDarkMode }}>
+        {/* Entire Page Container */}
+        <div className={`${darkMode ? 'dark' : ''} transition-colors duration-500`}>
+          <div className="min-h-screen flex flex-col bg-body-bg dark:bg-body-bg-dark">
+
+            {showTip && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-30">
+                  <div className = "bg-white rounded-lg shadow-lg p-6 max-w-sm relative" >
+                    <button
+                        onClick={() => setShowTip(false)}
+                        className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+                    >
+                      ✕
+                    </button>
+                    <h2 className="text-lg font-semibold mb-2 text-gray-800">
+                      Tip for Using CalcX
+                    </h2>
+                    <ul className="list-disc list-inside text-gray-700">
+                      <li>Use your keyboard: digits, +, -, *, /, Enter, Backspace.</li>
+                      <li>Click “C” to clear the current input.</li>
+                      <li>Open History to revisit past calculations.</li>
+                    </ul>
+                  </div>
+                </div>
+            )}
+
+
+            {/* Header */}
+            <header className="p-4 bg-card-bg shadow-sm">
+              <div className="container mx-auto flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Hash className="text-gray-800" size={24} />
+                  <h1 className="text-xl font-bold text-gray-800">
+                    CalcX
+                  </h1>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                      onClick={() => setDarkMode(!darkMode)}
+                      className="p-2 rounded-full hover:bg-gray-100"
+                  >
+                    <Moon className="text-gray-800" />
+                  </button>
+                  <a
+                      href="https://github.com/realmarqdcam"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-full hover:bg-gray-100"
+                  >
+                    <Github className="text-gray-800" />
+                  </a>
+                </div>
+              </div>
+            </header>
+
+            {/* Main Content */}
+            <main className="flex-1 py-8 px-4 flex items-start justify-center">
+              {/* Calculator Container */}
+              <div className="relative w-full max-w-sm bg-card-bg rounded-calculator shadow-calculator overflow-hidden">
+
+                {/* Calculator Header (Mode + History Button) */}
+                <div className="p-4 flex justify-between items-center border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setSettingsOpen(true)}
+                        className="p-2 rounded-full hover:bg-gray-100"
+                    >
+                      <svg className="text-gray-800" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83a2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2a2 2 0 0 1-2-2v-.09a1.65 1.65 0 0 0-1.51-1.51a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2a2 2 0 0 1 2-2h.09a1.65 1.65 0 0 0 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2a2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0a2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2a2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                      </svg>
+                    </button>
+                    <div className="text-sm font-medium text-gray-800">
+                      {modes.find((m) => m.id === mode)?.name || 'Standard'}
+                    </div>
+                  </div>
+                  <button
+                      onClick={() => setHistoryOpen(true)}
+                      className="p-2 rounded-full hover:bg-gray-100"
+                  >
+                    <RotateCcw size={20} className="text-gray-800" />
+                  </button>
+                </div>
+
+
+                {/* Calculator Display */}
+                <div className="p-4 bg-gray-50">
+                  <div className="flex flex-col items-end">
+                    {/* Show previous input and operation when present */}
+                    <div className="w-full text-right mb-1 text-gray-500 text-sm">
+                      {state.previousInput && state.operation && (
+                          <span>
+          {state.previousInput} {state.operation}
+        </span>
+                      )}
+                    </div>
+
+                    {/* Main display row: optional memory, then current input */}
+                    <div className="w-full flex justify-between items-center">
+                      {/* If you’re using memory, uncomment this line: */}
+                      {/* <span className="text-sm text-gray-500">{getMemoryValue()}</span> */}
+                      <span className="text-3xl font-bold text-gray-800 break-all text-right">
+        {state.currentInput !== '' ? state.currentInput : '0'}
+      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Render extra buttons for 'scientific' or 'programmer' mode */}
+                {renderSpecialButtons()}
+
+                {/* Calculator Keypad */}
+                <div className="p-4 grid grid-cols-4 gap-2">
+                  {/* First Row */}
+                  <Button
+                      secondary
+                      className="bg-calc-gray text-text-dark"
+                      onClick={() => dispatch({ type: 'CLEAR' })}
+                  >
+                    C
+                  </Button>
+                  <Button
+                      secondary
+                      className="bg-calc-gray text-text-dark"
+                      onClick={() => dispatch({ type: 'TOGGLE_SIGN' })}
+                  >
+                    +/-
+                  </Button>
+                  <Button
+                      secondary
+                      className="bg-calc-gray text-text-dark"
+                      onClick={() => dispatch({ type: 'CALCULATE_PERCENTAGE' })}
+                  >
+                    %
+                  </Button>
+                  <Button
+                      operation
+                      className="bg-calc-gray-dark text-text-dark"
+                      onClick={() => handleOperation('÷')}
+                  >
+                    ÷
+                  </Button>
+
+                  {/* Second Row */}
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('7')}
+                  >
+                    7
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('8')}
+                  >
+                    8
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('9')}
+                  >
+                    9
+                  </Button>
+                  <Button
+                      operation
+                      className="bg-calc-gray-dark text-text-dark"
+                      onClick={() => handleOperation('×')}
+                  >
+                    ×
+                  </Button>
+
+                  {/* Third Row */}
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('4')}
+                  >
+                    4
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('5')}
+                  >
+                    5
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('6')}
+                  >
+                    6
+                  </Button>
+                  <Button
+                      operation
+                      className="bg-calc-gray-dark text-text-dark"
+                      onClick={() => handleOperation('-')}
+                  >
+                    -
+                  </Button>
+
+                  {/* Fourth Row */}
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('1')}
+                  >
+                    1
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('2')}
+                  >
+                    2
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => handleNumberInput('3')}
+                  >
+                    3
+                  </Button>
+                  <Button
+                      operation
+                      className="bg-calc-gray-dark text-text-dark"
+                      onClick={() => handleOperation('+')}
+                  >
+                    +
+                  </Button>
+
+                  {/* Fifth Row */}
+                  <Button
+                      className="col-span-2 bg-white text-text-dark"
+                      onClick={() => handleNumberInput('0')}
+                  >
+                    0
+                  </Button>
+                  <Button
+                      className="bg-white text-text-dark"
+                      onClick={() => dispatch({ type: 'ADD_DECIMAL' })}
+                  >
+                    .
+                  </Button>
+                  <Button
+                      equals
+                      className="bg-calc-blue text-white"
+                      onClick={handleCalculate}
+                  >
+                    =
+                  </Button>
+                </div>
+
+
+
+                {/* Panels */}
+                <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+                <HistoryPanel
+                    isOpen={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    history={state.history}
+                />
+              </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="p-4 bg-card-bg shadow-sm">
+              <div className="container mx-auto text-center">
+                <p className="text-sm text-gray-500">
+                  CalcX © {new Date().getFullYear()} | A React Advanced Calculator
+                </p>
+              </div>
+            </footer>
+
+          </div>
+        </div>
+      </ThemeContext.Provider>
+  );
+};
+
+export default CalculatorApp;
